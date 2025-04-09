@@ -12,16 +12,16 @@ import (
 )
 
 const (
-	TOKEN_EXP  = time.Hour * 6
-	SECRET_KEY = "somesigningkey"
-	SALT       = "salt"
+	TokenExp  = time.Hour * 6
+	SecretKey = "somesigningkey"
+	Salt      = "salt"
 )
 
 func generateHash(password string) string {
 	hash := sha256.New()
 	hash.Write([]byte(password))
 
-	return fmt.Sprintf("%x", hash.Sum([]byte(SALT)))
+	return fmt.Sprintf("%x", hash.Sum([]byte(Salt)))
 }
 
 type tokenClaims struct {
@@ -50,13 +50,13 @@ func (as *AuthService) GenerateToken(ctx context.Context, login, password string
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &tokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TOKEN_EXP)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExp)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		UserID: user.ID,
 	})
 
-	return token.SignedString([]byte(SECRET_KEY))
+	return token.SignedString([]byte(SecretKey))
 }
 
 func (as *AuthService) ParseToken(ctx context.Context, tokenGot string) (int, error) {
@@ -67,7 +67,7 @@ func (as *AuthService) ParseToken(ctx context.Context, tokenGot string) (int, er
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("invalid signing method: %v", t.Header["alg"])
 			}
-			return []byte(SECRET_KEY), nil
+			return []byte(SecretKey), nil
 		})
 
 	if err != nil {

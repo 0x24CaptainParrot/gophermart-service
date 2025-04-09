@@ -18,7 +18,7 @@ func NewHandler(service *service.Service) *Handler {
 	}
 }
 
-func (h *Handler) InitApiRoutes() *chi.Mux {
+func (h *Handler) InitAPIRoutes() *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(logger.LoggingReqResMiddleware(logger.Log))
 
@@ -43,9 +43,9 @@ func (h *Handler) InitApiRoutes() *chi.Mux {
 	return r
 }
 
-type ApiFunc func(w http.ResponseWriter, r *http.Request) error
+type APIFunc func(w http.ResponseWriter, r *http.Request) error
 
-func Adapter(f ApiFunc) http.HandlerFunc {
+func Adapter(f APIFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := f(w, r); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

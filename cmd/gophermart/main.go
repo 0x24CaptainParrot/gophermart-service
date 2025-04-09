@@ -39,7 +39,7 @@ func main() {
 
 	go func() {
 		logger.Sugar.Infof("starting server on %s", cfg.RunAddr)
-		if err := srv.Run(cfg.RunAddr, handler.InitApiRoutes()); err != nil {
+		if err := srv.Run(cfg.RunAddr, handler.InitAPIRoutes()); err != nil {
 			log.Fatal("error occured on server:", err)
 		}
 	}()

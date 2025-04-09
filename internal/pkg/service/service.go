@@ -10,6 +10,12 @@ import (
 type Order interface {
 }
 
+type Balance interface {
+}
+
+type Withdraw interface {
+}
+
 type Authorization interface {
 	CreateUser(ctx context.Context, user models.User) (int, error)
 	GenerateToken(ctx context.Context, login, password string) (string, error)
