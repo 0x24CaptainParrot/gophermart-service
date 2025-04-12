@@ -1,0 +1,30 @@
+package models
+
+import (
+	"encoding/json"
+	"strconv"
+	"time"
+)
+
+type Order struct {
+	ID        string    `json:"id,omitempty"`
+	UserId    int       `json:"user_id"`
+	Number    int64     `json:"number"`
+	Status    string    `json:"status,omitempty"`
+	Accrual   int64     `json:"accrual,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (o Order) MarshalJSON() ([]byte, error) {
+	type OrderAlias Order
+
+	aliasVal := struct {
+		OrderAlias
+		Number string `json:"number"`
+	}{
+		OrderAlias: OrderAlias(o),
+		Number:     strconv.Itoa(int(o.Number)),
+	}
+
+	return json.Marshal(aliasVal)
+}

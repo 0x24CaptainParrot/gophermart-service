@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/0x24CaptainParrot/gophermart-service/internal/config"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/logger"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/service"
 	"github.com/go-chi/chi"
@@ -10,11 +11,13 @@ import (
 
 type Handler struct {
 	services *service.Service
+	cfg      *config.Config
 }
 
-func NewHandler(service *service.Service) *Handler {
+func NewHandler(config *config.Config, service *service.Service) *Handler {
 	return &Handler{
 		services: service,
+		cfg:      config,
 	}
 }
 
@@ -29,8 +32,8 @@ func (h *Handler) InitAPIRoutes() *chi.Mux {
 
 			r.Group(func(r chi.Router) {
 				r.Use(AuthenticateMiddleware(h.services.Authorization))
-				// r.Post("/orders")
-				// r.Get("/orders")
+				r.Post("/orders", h.ProcessUserOrderHandler)
+				r.Get("/orders", h.UserOrdersHandler)
 				// r.Route("/balance", func(r chi.Router) {
 				// 	r.Get("/")
 				// 	r.Post("/withdraw")

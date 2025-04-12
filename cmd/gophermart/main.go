@@ -33,8 +33,8 @@ func main() {
 	}
 
 	repos := repository.NewRepository(db)
-	services := service.NewService(repos.Authorization)
-	handler := handlers.NewHandler(services)
+	services := service.NewService(repos.Authorization, repos.Order)
+	handler := handlers.NewHandler(cfg, services)
 	srv := &handlers.Server{}
 
 	go func() {
