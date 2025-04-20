@@ -25,23 +25,28 @@ func GetMigrationsPath() string {
 
 func IsValidOrderNumberLuhn(orderNumber int64) bool {
 	digits := make([]int64, 0)
-	for v := range orderNumber {
-		digits = append(digits, v)
+	n := orderNumber
+	if n > 0 {
+		digits = append([]int64{n % 10}, digits...)
+		n /= 10
 	}
 
 	if len(digits) < 2 {
 		return false
 	}
 
-	var sum int64
-	for i := len(digits) - 2; i >= 0; i -= 2 {
-		digits[i] *= 2
-		if digits[i] > 9 {
-			digits[i] = digits[i]%10 + digits[i]/10
+	workDigits := make([]int64, len(digits))
+	copy(workDigits, digits)
+
+	for i := len(workDigits) - 2; i >= 0; i -= 2 {
+		workDigits[i] *= 2
+		if workDigits[i] > 9 {
+			workDigits[i] = workDigits[i]%10 + workDigits[i]/10
 		}
 	}
 
-	for _, d := range digits {
+	var sum int64
+	for _, d := range workDigits {
 		sum += d
 	}
 

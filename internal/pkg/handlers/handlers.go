@@ -1,30 +1,28 @@
 package handlers
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 
+	"github.com/0x24CaptainParrot/gophermart-service/internal/logger"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/repository"
-	"github.com/0x24CaptainParrot/gophermart-service/internal/utils"
+	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/service"
 )
 
 func (h *Handler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "text/plain" {
-		http.Error(w, "invalid content-type", http.StatusUnsupportedMediaType)
-		return
-	}
-
 	userID, ok := GetUserID(r)
 	if !ok {
 		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Header.Get("Content-Type") != "text/plain" {
+		http.Error(w, "invalid content-type", http.StatusUnsupportedMediaType)
 		return
 	}
 
@@ -40,10 +38,6 @@ func (h *Handler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request
 		http.Error(w, "invalid order number", http.StatusBadRequest)
 		return
 	}
-	if !utils.IsValidOrderNumberLuhn(num) {
-		http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
-		return
-	}
 
 	order := models.Order{
 		UserId: userID,
@@ -53,33 +47,33 @@ func (h *Handler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request
 
 	ctx := r.Context()
 	if err := h.services.Order.CreateOrder(ctx, order); err != nil {
-		switch true {
-		case errors.Is(err, repository.ErrAlreadyPostedByUser):
-			http.Error(w, err.Error(), http.StatusOK)
-			return
-		case errors.Is(err, repository.ErrAlreadyExists):
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		default:
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		respOrderErr, ok := err.(*service.OrderServiceError)
+		if !ok {
+			http.Error(w, "failed to return the server response", http.StatusInternalServerError)
 			return
 		}
+		http.Error(w, respOrderErr.Error(), respOrderErr.RespStatusCode)
+		return
 	}
 
-	// go h.AddLoyaltyPoints(ctx, order.UserId, order.Number)
+	if err := h.services.OrderProcessing.EnqueueOrder(r.Context(), order); err != nil {
+		http.Error(w, "failed to enqueue order", http.StatusInternalServerError)
+		logger.Log.Sugar().Errorf("failed to enqueue order %d, err: %v", order.Number, err)
+		return
+	}
 
 	w.WriteHeader(http.StatusAccepted)
 }
 
 func (h *Handler) UserOrdersHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "text/plain" {
-		http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
-		return
-	}
-
 	userID, ok := GetUserID(r)
 	if !ok {
 		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Header.Get("Content-Type") != "text/plain" {
+		http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
 		return
 	}
 
@@ -99,25 +93,91 @@ func (h *Handler) UserOrdersHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(orders)
 }
 
-func (h *Handler) AddLoyaltyPoints(ctx context.Context, UserID int, orderID int64) {
-	var order struct {
-		Order   string `json:"order"`
-		Status  string `json:"status"`
-		Accrual int    `json:"accrual"`
+func (h *Handler) UserBalanceHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Error(w, "user is is missing in context", http.StatusUnauthorized)
+		return
 	}
-	client := &http.Client{}
-	resp, err := client.Get(fmt.Sprintf("%s/api/orders/%d", h.cfg.AccrualAddr, orderID))
+
+	ctx := r.Context()
+	balance, err := h.services.Balance.DisplayUserBalance(ctx, userID)
 	if err != nil {
-		log.Println("failed to fetch")
-		return
-	}
-	defer resp.Body.Close()
-
-	if err := json.NewDecoder(resp.Body).Decode(&order); err != nil {
-		log.Fatal()
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// if err := h.services.Balance.AddLoyaltyPoints(ctx, UserID); err != nil {
-	// }
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(balance)
+}
+
+func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Request) {
+	userId, ok := GetUserID(r)
+	if !ok {
+		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "invalid content-type", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	var withdrawInfo models.WithdrawRequest
+	if err := json.NewDecoder(r.Body).Decode(&withdrawInfo); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	order := models.Order{
+		UserId: userId,
+		Number: withdrawInfo.Order,
+		Status: "NEW",
+	}
+
+	if err := h.services.Order.CreateOrder(r.Context(), order); err != nil {
+		respOrderErr, ok := err.(*service.OrderServiceError)
+		if !ok {
+			http.Error(w, "failed to return the server response", http.StatusInternalServerError)
+			return
+		}
+		http.Error(w, respOrderErr.Error(), respOrderErr.RespStatusCode)
+		return
+	}
+
+	ctx := r.Context()
+	if err := h.services.Balance.WithdrawLoyaltyPoints(ctx, userId, withdrawInfo); err != nil {
+		if errors.Is(err, repository.ErrInsufficientBalance) {
+			http.Error(w, err.Error(), http.StatusPaymentRequired)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) DisplayUserWithdrawals(w http.ResponseWriter, r *http.Request) {
+	userId, ok := GetUserID(r)
+	if !ok {
+		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	userWithdrawals, err := h.services.Balance.DisplayWithdrawals(ctx, userId)
+	if err != nil {
+		if errors.Is(err, repository.ErrNoWithdrawals) {
+			http.Error(w, err.Error(), http.StatusNoContent)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(userWithdrawals)
 }

@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"net/http"
-
 	"github.com/0x24CaptainParrot/gophermart-service/internal/config"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/logger"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/service"
@@ -34,24 +32,14 @@ func (h *Handler) InitAPIRoutes() *chi.Mux {
 				r.Use(AuthenticateMiddleware(h.services.Authorization))
 				r.Post("/orders", h.ProcessUserOrderHandler)
 				r.Get("/orders", h.UserOrdersHandler)
-				// r.Route("/balance", func(r chi.Router) {
-				// 	r.Get("/")
-				// 	r.Post("/withdraw")
-				// })
-				// r.Get("/withdrawals")
+				r.Route("/balance", func(r chi.Router) {
+					r.Get("/", h.UserBalanceHandler)
+					r.Post("/withdraw", h.WithdrawLoyaltyPointsHandler)
+				})
+				r.Get("/withdrawals", h.DisplayUserWithdrawals)
 			})
 		})
 	})
 
 	return r
-}
-
-type APIFunc func(w http.ResponseWriter, r *http.Request) error
-
-func Adapter(f APIFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := f(w, r); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	}
 }

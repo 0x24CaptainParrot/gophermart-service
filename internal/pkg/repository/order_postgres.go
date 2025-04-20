@@ -90,27 +90,3 @@ func (op *OrderPostgres) CheckOrderStatus(ctx context.Context, orderID int64, us
 
 	return StatusOwnedByOther, nil
 }
-
-const updateOrderStatus = `UPDATE orders SET status = $2, accrual = $3 WHERE number = $1`
-
-func (op *OrderPostgres) UpdateOrderStatus(ctx context.Context, number int64, status string, accrual int) error {
-	_, err := op.db.ExecContext(ctx, updateOrderStatus, number, status, accrual)
-	return err
-}
-
-// old version
-
-const orderExcludeUser = `SELECT EXISTS(SELECT 1 FROM orders WHERE number = $1 AND user_id != $2)`
-
-func (op *OrderPostgres) OrderExcludeUser(ctx context.Context, orderId int64, id int) error {
-	var exists bool
-	err := op.db.QueryRowContext(ctx, orderExcludeUser, orderId, id).Scan(&exists)
-	if err != nil {
-		return err
-	}
-
-	if exists {
-		return ErrAlreadyExists
-	}
-	return nil
-}
