@@ -19,8 +19,8 @@ func NewBalancePostgres(db *sql.DB) *BalancePostgres {
 }
 
 const insertBalanceIfNotExists = `
-				INSERT INTO balance (user_id, current, withdrawn) 
-				VALUES ($1, 0, 0) 
+				INSERT INTO balance (user_id, current, withdrawn)
+				VALUES ($1, 0, 0)
 				ON CONFLICT (user_id) DO NOTHING;`
 
 const getUserBalance = `SELECT current, withdrawn FROM balance WHERE user_id = $1;`

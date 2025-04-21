@@ -26,16 +26,21 @@ func GetMigrationsPath() string {
 
 func IsValidOrderNumberLuhn(orderNumber int64) bool {
 	s := strconv.FormatInt(orderNumber, 10)
-	sum := 0
-	alternate := false
 
-	for i := len(s) - 1; i >= 0; i-- {
-		digit, err := strconv.Atoi(string(s[i]))
+	if len(s) < 5 {
+		return false
+	}
+
+	sum := 0
+	alternate := len(s)%2 == 0
+
+	for i, c := range s {
+		digit, err := strconv.Atoi(string(c))
 		if err != nil {
 			return false
 		}
 
-		if alternate {
+		if (i%2 == 0) == alternate {
 			digit *= 2
 			if digit > 9 {
 				digit = digit%10 + digit/10
