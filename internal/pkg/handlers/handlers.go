@@ -35,7 +35,7 @@ func (h *Handler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !utils.IsValidOrderNumberLuhn(num) {
+	if !utils.IsValidOrderNum(num) {
 		http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
 		return
 	}

@@ -52,3 +52,23 @@ func IsValidOrderNumberLuhn(orderNumber int64) bool {
 
 	return sum%10 == 0
 }
+
+func IsValidOrderNum(num int64) bool {
+	var sum int
+	alternate := false
+
+	for num > 0 {
+		digit := num % 10
+		if alternate {
+			digit *= 2
+			if digit > 9 {
+				digit = digit%10 + digit/10
+			}
+		}
+		sum += int(digit)
+		num /= 10
+		alternate = !alternate
+	}
+
+	return sum%10 == 0
+}
