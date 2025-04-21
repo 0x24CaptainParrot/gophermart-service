@@ -12,7 +12,6 @@ import (
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/repository"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/service"
-	"github.com/0x24CaptainParrot/gophermart-service/internal/utils"
 )
 
 func (h *Handler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request) {
@@ -35,10 +34,10 @@ func (h *Handler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !utils.IsValidOrderNumberLuhn(num) {
-		http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
-		return
-	}
+	// if !utils.IsValidOrderNumberLuhn(num) {
+	// 	http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
+	// 	return
+	// }
 
 	order := models.Order{
 		UserID: userID,
@@ -126,10 +125,10 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if !utils.IsValidOrderNumberLuhn(withdrawInfo.Order) {
-		http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
-		return
-	}
+	// if !utils.IsValidOrderNumberLuhn(withdrawInfo.Order) {
+	// 	http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
+	// 	return
+	// }
 
 	order := models.Order{
 		UserID: userID,
