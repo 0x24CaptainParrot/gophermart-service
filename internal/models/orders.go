@@ -8,7 +8,7 @@ import (
 
 type Order struct {
 	ID        string    `json:"id,omitempty"`
-	UserId    int       `json:"user_id"`
+	UserID    int       `json:"user_id"`
 	Number    int64     `json:"number"`
 	Status    string    `json:"status,omitempty"`
 	Accrual   int64     `json:"accrual,omitempty"`

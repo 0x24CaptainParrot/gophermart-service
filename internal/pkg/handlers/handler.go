@@ -36,7 +36,7 @@ func (h *Handler) InitAPIRoutes() *chi.Mux {
 					r.Get("/", h.UserBalanceHandler)
 					r.Post("/withdraw", h.WithdrawLoyaltyPointsHandler)
 				})
-				r.Get("/withdrawals", h.DisplayUserWithdrawals)
+				r.Get("/withdrawals", h.DisplayUserWithdrawalsHandler)
 			})
 		})
 	})

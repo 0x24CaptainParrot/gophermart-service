@@ -64,7 +64,7 @@ func (r *WorkerPoolRepo) GetPendingOrders(ctx context.Context, limit int) ([]mod
 	orders := make([]models.Order, 0, limit)
 	for rows.Next() {
 		var order models.Order
-		err := rows.Scan(&order.UserId, &order.Number, &order.Status)
+		err := rows.Scan(&order.UserID, &order.Number, &order.Status)
 		if err != nil {
 			return nil, err
 		}

@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -24,30 +25,24 @@ func GetMigrationsPath() string {
 }
 
 func IsValidOrderNumberLuhn(orderNumber int64) bool {
-	digits := make([]int64, 0)
-	n := orderNumber
-	if n > 0 {
-		digits = append([]int64{n % 10}, digits...)
-		n /= 10
-	}
+	s := strconv.FormatInt(orderNumber, 10)
+	sum := 0
+	alternate := false
 
-	if len(digits) < 2 {
-		return false
-	}
-
-	workDigits := make([]int64, len(digits))
-	copy(workDigits, digits)
-
-	for i := len(workDigits) - 2; i >= 0; i -= 2 {
-		workDigits[i] *= 2
-		if workDigits[i] > 9 {
-			workDigits[i] = workDigits[i]%10 + workDigits[i]/10
+	for i := len(s) - 1; i >= 0; i-- {
+		digit, err := strconv.Atoi(string(s[i]))
+		if err != nil {
+			return false
 		}
-	}
 
-	var sum int64
-	for _, d := range workDigits {
-		sum += d
+		if alternate {
+			digit *= 2
+			if digit > 9 {
+				digit = digit%10 + digit/10
+			}
+		}
+		sum += digit
+		alternate = !alternate
 	}
 
 	return sum%10 == 0

@@ -26,7 +26,7 @@ func NewOrderService(repo repository.Order) *OrderService {
 }
 
 func (os *OrderService) CreateOrder(ctx context.Context, order models.Order) error {
-	status, err := os.repo.CheckOrderStatus(ctx, order.Number, order.UserId)
+	status, err := os.repo.CheckOrderStatus(ctx, order.Number, order.UserID)
 	if err != nil {
 		return err
 	}

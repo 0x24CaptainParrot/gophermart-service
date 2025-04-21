@@ -51,7 +51,7 @@ func main() {
 	}
 	defer orderProcessing.StopProcessing()
 
-	orderProcessing.StartProcessing(context.Background(), 10)
+	orderProcessing.StartProcessing(context.Background(), 5)
 
 	repos := repository.NewRepository(db)
 	services := service.NewService(repos.Authorization, repos.Order, repos.Balance, orderProcessing)

@@ -12,17 +12,13 @@ import (
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/repository"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/service"
+	"github.com/0x24CaptainParrot/gophermart-service/internal/utils"
 )
 
 func (h *Handler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := GetUserID(r)
 	if !ok {
 		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
-		return
-	}
-
-	if r.Header.Get("Content-Type") != "text/plain" {
-		http.Error(w, "invalid content-type", http.StatusUnsupportedMediaType)
 		return
 	}
 
@@ -39,8 +35,13 @@ func (h *Handler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if !utils.IsValidOrderNumberLuhn(num) {
+		http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
+		return
+	}
+
 	order := models.Order{
-		UserId: userID,
+		UserID: userID,
 		Number: num,
 		Status: "NEW",
 	}
@@ -69,11 +70,6 @@ func (h *Handler) UserOrdersHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := GetUserID(r)
 	if !ok {
 		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
-		return
-	}
-
-	if r.Header.Get("Content-Type") != "text/plain" {
-		http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
 		return
 	}
 
@@ -113,7 +109,7 @@ func (h *Handler) UserBalanceHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Request) {
-	userId, ok := GetUserID(r)
+	userID, ok := GetUserID(r)
 	if !ok {
 		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
 		return
@@ -130,8 +126,13 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if !utils.IsValidOrderNumberLuhn(withdrawInfo.Order) {
+		http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
+		return
+	}
+
 	order := models.Order{
-		UserId: userId,
+		UserID: userID,
 		Number: withdrawInfo.Order,
 		Status: "NEW",
 	}
@@ -147,7 +148,7 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	ctx := r.Context()
-	if err := h.services.Balance.WithdrawLoyaltyPoints(ctx, userId, withdrawInfo); err != nil {
+	if err := h.services.Balance.WithdrawLoyaltyPoints(ctx, userID, withdrawInfo); err != nil {
 		if errors.Is(err, repository.ErrInsufficientBalance) {
 			http.Error(w, err.Error(), http.StatusPaymentRequired)
 			return
@@ -159,15 +160,15 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *Handler) DisplayUserWithdrawals(w http.ResponseWriter, r *http.Request) {
-	userId, ok := GetUserID(r)
+func (h *Handler) DisplayUserWithdrawalsHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserID(r)
 	if !ok {
 		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
 		return
 	}
 
 	ctx := r.Context()
-	userWithdrawals, err := h.services.Balance.DisplayWithdrawals(ctx, userId)
+	userWithdrawals, err := h.services.Balance.DisplayWithdrawals(ctx, userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNoWithdrawals) {
 			http.Error(w, err.Error(), http.StatusNoContent)

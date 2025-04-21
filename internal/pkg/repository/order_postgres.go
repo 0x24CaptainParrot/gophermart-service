@@ -23,7 +23,7 @@ var ErrAlreadyPostedByUser = errors.New("user already posted this order")
 const createOrder = `INSERT INTO orders (user_id, number, status) VALUES ($1, $2, $3)`
 
 func (op *OrderPostgres) CreateOrder(ctx context.Context, order models.Order) error {
-	_, err := op.db.ExecContext(ctx, createOrder, order.UserId, order.Number, order.Status)
+	_, err := op.db.ExecContext(ctx, createOrder, order.UserID, order.Number, order.Status)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgerrcode.IsIntegrityConstraintViolation(pgErr.Code) {
 		return ErrAlreadyPostedByUser
