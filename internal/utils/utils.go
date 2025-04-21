@@ -55,19 +55,19 @@ func IsValidOrderNumberLuhn(orderNumber int64) bool {
 
 func IsValidOrderNum(num int64) bool {
 	var sum int
-	alternate := false
+	pos := 1
 
 	for num > 0 {
-		digit := num % 10
-		if alternate {
+		digit := int(num % 10)
+		if pos%2 == 0 {
 			digit *= 2
 			if digit > 9 {
 				digit = digit%10 + digit/10
 			}
 		}
-		sum += int(digit)
+		sum += digit
 		num /= 10
-		alternate = !alternate
+		pos++
 	}
 
 	return sum%10 == 0

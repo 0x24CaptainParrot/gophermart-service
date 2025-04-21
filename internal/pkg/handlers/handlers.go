@@ -126,6 +126,11 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if !utils.IsValidOrderNum(withdrawInfo.Order) {
+		http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
+		return
+	}
+
 	order := models.Order{
 		UserID: userID,
 		Number: withdrawInfo.Order,
