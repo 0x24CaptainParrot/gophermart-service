@@ -81,9 +81,9 @@ const lockGetOrderStatus = `SELECT status FROM orders WHERE number = $1 FOR UPDA
 
 var ErrOrderNotFound = errors.New("order was not found")
 
-func (s *WorkerPoolRepo) LockAndGetOrderStatus(ctx context.Context, orderNumber int64) (string, error) {
+func (r *WorkerPoolRepo) LockAndGetOrderStatus(ctx context.Context, orderNumber int64) (string, error) {
 	var status string
-	err := s.pool.QueryRow(ctx, lockGetOrderStatus, orderNumber).Scan(&status)
+	err := r.pool.QueryRow(ctx, lockGetOrderStatus, orderNumber).Scan(&status)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ``, ErrOrderNotFound
