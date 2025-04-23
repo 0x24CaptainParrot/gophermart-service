@@ -6,8 +6,6 @@ import (
 	"errors"
 
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type OrderPostgres struct {
@@ -24,11 +22,7 @@ const createOrder = `INSERT INTO orders (user_id, number, status) VALUES ($1, $2
 
 func (op *OrderPostgres) CreateOrder(ctx context.Context, order models.Order) error {
 	_, err := op.db.ExecContext(ctx, createOrder, order.UserID, order.Number, order.Status)
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgerrcode.IsIntegrityConstraintViolation(pgErr.Code) {
-		return ErrAlreadyPostedByUser
-	}
-	return nil
+	return err
 }
 
 const getOrders = `SELECT number, status, accrual, uploaded_at 
