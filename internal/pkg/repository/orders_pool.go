@@ -49,9 +49,13 @@ func (r *WorkerPoolRepo) UpdateOrderAndBalance(ctx context.Context, order models
 		return fmt.Errorf("order %d is already locked", order.Number)
 	}
 
-	_, err = tx.Exec(ctx, updateOrderWithAccrual, order.Number, order.Status, accrual)
+	tag, err := tx.Exec(ctx, updateOrderWithAccrual, order.Number, order.Status, accrual)
 	if err != nil {
 		return fmt.Errorf("failed to update order and balance: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return errors.New("no rows updated for order")
 	}
 
 	return tx.Commit(ctx)
