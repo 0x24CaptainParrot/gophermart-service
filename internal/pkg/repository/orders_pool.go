@@ -41,6 +41,14 @@ func (r *WorkerPoolRepo) UpdateOrderAndBalance(ctx context.Context, order models
 	}
 	defer tx.Rollback(ctx)
 
+	var locked bool
+	if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock($1)`, order.Number).Scan(&locked); err != nil {
+		return fmt.Errorf("failed to acquire advisory lock: %w", err)
+	}
+	if !locked {
+		return fmt.Errorf("order %d is already locked", order.Number)
+	}
+
 	_, err = tx.Exec(ctx, updateOrderWithAccrual, order.Number, order.Status, accrual)
 	if err != nil {
 		return fmt.Errorf("failed to update order and balance: %w", err)
@@ -86,9 +94,9 @@ func (r *WorkerPoolRepo) LockAndGetOrderStatus(ctx context.Context, orderNumber 
 	err := r.pool.QueryRow(ctx, lockGetOrderStatus, orderNumber).Scan(&status)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ``, ErrOrderNotFound
+			return "", ErrOrderNotFound
 		}
-		return ``, fmt.Errorf("failed to lock and get order status: %w", err)
+		return "", fmt.Errorf("failed to lock and get order status: %w", err)
 	}
 	return status, nil
 }

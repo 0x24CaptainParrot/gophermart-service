@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/0x24CaptainParrot/gophermart-service/internal/logger"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/repository"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -23,6 +26,8 @@ type OrderProcessingService struct {
 	workers     int
 	cancel      context.CancelFunc
 	client      *http.Client
+	ordersQueue chan int64
+	orderLocks  *sync.Map
 }
 
 func NewOrderProcessingService(pool *pgxpool.Pool, accrualAddr string, channel string) (*OrderProcessingService, error) {
@@ -41,12 +46,16 @@ func NewOrderProcessingService(pool *pgxpool.Pool, accrualAddr string, channel s
 		pool:        pool,
 		channel:     channel,
 		client:      client,
+		ordersQueue: make(chan int64, 1000),
+		orderLocks:  &sync.Map{},
 	}, nil
 }
 
 func (s *OrderProcessingService) StartProcessing(ctx context.Context, workers int) {
 	ctx, s.cancel = context.WithCancel(ctx)
 	s.workers = workers
+
+	go s.notificationListener(ctx)
 
 	for i := 0; i < workers; i++ {
 		go s.worker(ctx, i)
@@ -55,16 +64,16 @@ func (s *OrderProcessingService) StartProcessing(ctx context.Context, workers in
 	go s.processExistingOrders(ctx)
 }
 
-func (s *OrderProcessingService) worker(ctx context.Context, workerID int) {
+func (s *OrderProcessingService) notificationListener(ctx context.Context) {
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
-		logger.Log.Sugar().Errorf("worker %d: failed to acquire connection: %v", workerID, err)
+		logger.Log.Sugar().Errorf("failed to acquire listener conn: %v", err)
 		return
 	}
 	defer conn.Release()
 
 	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", s.channel)); err != nil {
-		logger.Log.Sugar().Errorf("worker %d: failed to listen channel: %v", workerID, err)
+		logger.Log.Sugar().Fatalf("failed to listen: %v", err)
 		return
 	}
 
@@ -79,6 +88,7 @@ func (s *OrderProcessingService) worker(ctx context.Context, workerID int) {
 					return
 				}
 				logger.Log.Sugar().Errorf("Notification error: %v", err)
+				time.Sleep(1 * time.Second)
 				continue
 			}
 
@@ -88,29 +98,36 @@ func (s *OrderProcessingService) worker(ctx context.Context, workerID int) {
 				continue
 			}
 
-			locked, err := s.tryLockOrder(ctx, orderNumber)
-			if err != nil {
-				logger.Log.Sugar().Errorf("Failed to lock order: %d: %v", orderNumber, err)
-				continue
+			select {
+			case s.ordersQueue <- orderNumber:
+			default:
+				logger.Log.Sugar().Warnf("queue is full, drop order %d", orderNumber)
 			}
-
-			if !locked {
-				continue
-			}
-
-			if err := s.processOrder(ctx, orderNumber); err != nil {
-				logger.Log.Sugar().Errorf("Worker %d failed to process order %d: %v", workerID, orderNumber, err)
-				continue
-			}
-			logger.Log.Sugar().Infof("Worker %d successfully processed order: %d", workerID, orderNumber)
 		}
 	}
 }
 
-func (s *OrderProcessingService) tryLockOrder(ctx context.Context, orderNumber int64) (bool, error) {
-	var locked bool
-	err := s.pool.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock($1)`, orderNumber).Scan(&locked)
-	return locked, err
+func (s *OrderProcessingService) worker(ctx context.Context, workerID int) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case orderNumber := <-s.ordersQueue:
+			if _, loaded := s.orderLocks.LoadOrStore(orderNumber, struct{}{}); loaded {
+				continue
+			}
+
+			go func(order int64) {
+				defer s.orderLocks.Delete(order)
+
+				if err := s.processOrder(ctx, order); err != nil {
+					logger.Log.Sugar().Errorf("Worker %d failed to process order %d: %v", workerID, orderNumber, err)
+					return
+				}
+				logger.Log.Sugar().Infof("Worker %d successfully processed order: %d", workerID, orderNumber)
+			}(orderNumber)
+		}
+	}
 }
 
 func (s *OrderProcessingService) processExistingOrders(ctx context.Context) {
@@ -130,8 +147,10 @@ func (s *OrderProcessingService) processExistingOrders(ctx context.Context) {
 			}
 
 			for _, order := range orders {
-				if err := s.processOrder(ctx, order.Number); err != nil {
-					logger.Log.Sugar().Errorf("Failed to process order %d: %v", order.Number, err)
+				select {
+				case s.ordersQueue <- order.Number:
+				default:
+					logger.Log.Sugar().Warnf("queue is full, skip %d", order.Number)
 				}
 			}
 		}
@@ -168,13 +187,24 @@ func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber i
 		Status: accrualData.Status,
 	}
 
-	logger.Log.Sugar().Infof("updating with: number: %d, status: %s, accrual: %d", order.Number, accrualData.Status, accrualData.Accrual)
-	if err := s.repo.UpdateOrderAndBalance(ctx, order, accrualData.Accrual); err != nil {
-		logger.Log.Sugar().Errorf("failed to update order with number: %d. error: %v", order.Number, err)
-		return fmt.Errorf("failed to update order: %v", err)
-	}
+	logger.Log.Sugar().Infof("updating with: number: %d, status: %s, accrual: %.2f", order.Number, accrualData.Status, accrualData.Accrual)
 
-	return nil
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		if err := s.repo.UpdateOrderAndBalance(ctx, order, accrualData.Accrual); err != nil {
+			var pgError *pgconn.PgError
+			if errors.As(err, &pgError) && pgerrcode.IsTransactionRollback(pgError.Code) {
+				lastErr = err
+				time.Sleep(time.Duration(i) * 100 * time.Millisecond)
+				continue
+			}
+
+			logger.Log.Sugar().Errorf("failed to update order with number: %d. error: %v", order.Number, err)
+			return fmt.Errorf("failed to update order: %w", err)
+		}
+		return nil
+	}
+	return lastErr
 }
 
 func (s *OrderProcessingService) getAccrual(ctx context.Context, orderNumber int64) (*models.AccrualResponse, error) {

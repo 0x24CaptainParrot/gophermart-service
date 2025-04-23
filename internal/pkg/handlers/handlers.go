@@ -151,8 +151,10 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 	if err := h.services.Balance.WithdrawLoyaltyPoints(ctx, userID, withdrawInfo); err != nil {
 		if errors.Is(err, repository.ErrInsufficientBalance) {
 			http.Error(w, err.Error(), http.StatusPaymentRequired)
+			logger.Log.Sugar().Errorf("Withdraw failed: %v", err)
 			return
 		}
+		logger.Log.Sugar().Errorf("Withdrawal failed: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
