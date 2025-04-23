@@ -88,12 +88,29 @@ func (s *OrderProcessingService) worker(ctx context.Context, workerID int) {
 				continue
 			}
 
-			if err := s.processOrder(ctx, orderNumber); err != nil {
-				logger.Log.Sugar().Errorf("Failed to process order %d: %v", orderNumber, err)
+			locked, err := s.tryLockOrder(ctx, orderNumber)
+			if err != nil {
+				logger.Log.Sugar().Errorf("Failed to lock order: %d: %v", orderNumber, err)
+				continue
 			}
-			logger.Log.Sugar().Infof("worker %d successfully processed order: %d", workerID, orderNumber)
+
+			if !locked {
+				continue
+			}
+
+			if err := s.processOrder(ctx, orderNumber); err != nil {
+				logger.Log.Sugar().Errorf("Worker %d failed to process order %d: %v", workerID, orderNumber, err)
+				continue
+			}
+			logger.Log.Sugar().Infof("Worker %d successfully processed order: %d", workerID, orderNumber)
 		}
 	}
+}
+
+func (s *OrderProcessingService) tryLockOrder(ctx context.Context, orderNumber int64) (bool, error) {
+	var locked bool
+	err := s.pool.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock($1)`, orderNumber).Scan(&locked)
+	return locked, err
 }
 
 func (s *OrderProcessingService) processExistingOrders(ctx context.Context) {
@@ -122,6 +139,19 @@ func (s *OrderProcessingService) processExistingOrders(ctx context.Context) {
 }
 
 func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber int64) error {
+	status, err := s.repo.LockAndGetOrderStatus(ctx, orderNumber)
+	if err != nil {
+		if errors.Is(err, repository.ErrOrderNotFound) {
+			logger.Log.Sugar().Warnf("Order: %d not found", orderNumber)
+			return nil
+		}
+		return fmt.Errorf("failed to check order status: %w", err)
+	}
+
+	if status == "PROCESSED" {
+		return nil
+	}
+
 	accrualData, err := s.getAccrual(ctx, orderNumber)
 	if err != nil {
 		logger.Log.Sugar().Errorf("failed to fetch data from accrual: Code: ")
@@ -132,12 +162,15 @@ func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber i
 		logger.Log.Sugar().Infof("Order with number: %d has 0 loyalty points", accrualData.Order)
 		return nil
 	}
+
 	order := models.Order{
 		Number: orderNumber,
 		Status: accrualData.Status,
 	}
+
 	logger.Log.Sugar().Infof("updating with: number: %d, status: %s, accrual: %d", order.Number, accrualData.Status, accrualData.Accrual)
 	if err := s.repo.UpdateOrderAndBalance(ctx, order, accrualData.Accrual); err != nil {
+		logger.Log.Sugar().Errorf("failed to update order with number: %d. error: %v", order.Number, err)
 		return fmt.Errorf("failed to update order: %v", err)
 	}
 
@@ -167,7 +200,7 @@ func (s *OrderProcessingService) getAccrual(ctx context.Context, orderNumber int
 }
 
 func (s *OrderProcessingService) EnqueueOrder(ctx context.Context, order models.Order) error {
-	_, err := s.pool.Exec(ctx, `NOTIFY `+s.channel+`, $1`, strconv.FormatInt(order.Number, 10))
+	_, err := s.pool.Exec(ctx, `SELECT pg_notify($1, $2)`, s.channel, strconv.FormatInt(order.Number, 10))
 	return err
 }
 

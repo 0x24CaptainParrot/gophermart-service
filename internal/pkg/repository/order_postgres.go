@@ -44,13 +44,13 @@ func (op *OrderPostgres) ListOrders(ctx context.Context, userID int) ([]models.O
 
 	for rows.Next() {
 		var order models.Order
-		var acc sql.NullInt64
+		var acc sql.NullFloat64
 		var uploadedAt sql.NullTime
 		if err := rows.Scan(&order.Number, &order.Status, &acc, &uploadedAt); err != nil {
 			return nil, err
 		}
 		if acc.Valid {
-			order.Accrual = acc.Int64
+			order.Accrual = acc.Float64
 		}
 		if uploadedAt.Valid {
 			order.CreatedAt = uploadedAt.Time

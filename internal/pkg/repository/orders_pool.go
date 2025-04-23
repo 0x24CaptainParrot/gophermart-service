@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
@@ -34,7 +35,7 @@ const (
 )
 
 func (r *WorkerPoolRepo) UpdateOrderAndBalance(ctx context.Context, order models.Order, accrual float64) error {
-	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -51,7 +52,9 @@ func (r *WorkerPoolRepo) UpdateOrderAndBalance(ctx context.Context, order models
 const (
 	getPendingOrders = `
 	SELECT user_id, number, status 
-		FROM orders WHERE status IN ('NEW', 'PROCESSING') 
+	FROM orders 
+	WHERE status IN ('NEW', 'PROCESSING') 
+	AND pg_try_advisory_xact_lock(number) 
 	ORDER BY uploaded_at ASC LIMIT $1`
 )
 
@@ -72,4 +75,20 @@ func (r *WorkerPoolRepo) GetPendingOrders(ctx context.Context, limit int) ([]mod
 	}
 
 	return orders, nil
+}
+
+const lockGetOrderStatus = `SELECT status FROM orders WHERE number = $1 FOR UPDATE SKIP LOCKED`
+
+var ErrOrderNotFound = errors.New("order was not found")
+
+func (s *WorkerPoolRepo) LockAndGetOrderStatus(ctx context.Context, orderNumber int64) (string, error) {
+	var status string
+	err := s.pool.QueryRow(ctx, lockGetOrderStatus, orderNumber).Scan(&status)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ``, ErrOrderNotFound
+		}
+		return ``, fmt.Errorf("failed to lock and get order status: %w", err)
+	}
+	return status, nil
 }
