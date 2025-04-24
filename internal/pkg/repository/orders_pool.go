@@ -29,7 +29,7 @@ const (
 			RETURNING user_id, accrual
 		),
 		insert_balance AS (
-			INSERT INTO balance(user, current, withdrawn) 
+			INSERT INTO balance(user_id, current, withdrawn) 
 			SELECT user_id, 0, 0 FROM updated_order 
 			ON CONFLICT (user_id) DO NOTHING
 		)
