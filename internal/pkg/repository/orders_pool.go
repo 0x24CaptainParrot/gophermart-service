@@ -27,6 +27,11 @@ const (
 				updated_at = NOW() 
 			WHERE number = $1 
 			RETURNING user_id, accrual
+		),
+		insert_balance AS (
+			INSERT INTO balance(user, current, withdrawn) 
+			SELECT user_id, 0, 0 FROM updated_order 
+			ON CONFLICT (user_id) DO NOTHING
 		)
 		UPDATE balance 
 		SET current = current + updated_order.accrual 
