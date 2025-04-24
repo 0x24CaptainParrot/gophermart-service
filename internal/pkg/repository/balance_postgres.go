@@ -111,7 +111,7 @@ func (bp *BalancePostgres) DisplayWithdrawals(ctx context.Context, userID int) (
 	}
 
 	if len(withdrawals) == 0 {
-		return nil, ErrNoWithdrawals
+		return []models.Withdrawal{}, nil
 	}
 
 	return withdrawals, nil

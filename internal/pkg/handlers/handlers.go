@@ -137,14 +137,18 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 		Status: "NEW",
 	}
 
-	if err := h.services.Order.CreateOrder(r.Context(), order); err != nil {
-		respOrderErr, ok := err.(*service.OrderServiceError)
+	err := h.services.Order.CreateOrder(r.Context(), order)
+	if err != nil {
+		svcErr, ok := err.(*service.OrderServiceError)
 		if !ok {
-			http.Error(w, "failed to return the server response", http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		http.Error(w, respOrderErr.Error(), respOrderErr.RespStatusCode)
-		return
+
+		if svcErr.RespStatusCode == http.StatusConflict {
+			http.Error(w, svcErr.Error(), http.StatusConflict)
+			return
+		}
 	}
 
 	ctx := r.Context()
@@ -172,15 +176,16 @@ func (h *Handler) DisplayUserWithdrawalsHandler(w http.ResponseWriter, r *http.R
 	ctx := r.Context()
 	userWithdrawals, err := h.services.Balance.DisplayWithdrawals(ctx, userID)
 	if err != nil {
-		if errors.Is(err, repository.ErrNoWithdrawals) {
-			http.Error(w, err.Error(), http.StatusNoContent)
-			return
-		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+
+	if len(userWithdrawals) == 0 {
+		w.Write([]byte("[]"))
+	}
+
 	json.NewEncoder(w).Encode(userWithdrawals)
 }

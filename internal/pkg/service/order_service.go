@@ -88,7 +88,7 @@ func (s *OrderProcessingService) notificationListener(ctx context.Context) {
 					return
 				}
 				logger.Log.Sugar().Errorf("Notification error: %v", err)
-				time.Sleep(1 * time.Second)
+				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
@@ -179,7 +179,6 @@ func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber i
 
 	if accrualData.Accrual == 0 {
 		logger.Log.Sugar().Infof("Order with number: %d has 0 loyalty points", accrualData.Order)
-		return nil
 	}
 
 	order := models.Order{
