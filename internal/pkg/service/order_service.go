@@ -218,6 +218,21 @@ func (s *OrderProcessingService) getAccrual(ctx context.Context, orderNumber int
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNoContent {
+		logger.Log.Sugar().Warnf("accrual service returned 204 No Content for order: %d", orderNumber)
+		return nil, fmt.Errorf("accrual service returned 204 No Content")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Log.Sugar().Errorf("accrual service returned status %d for order: %d", resp.StatusCode, orderNumber)
+		return nil, fmt.Errorf("accrual service returned status: %d", resp.StatusCode)
+	}
+
+	if resp.ContentLength == 0 {
+		logger.Log.Sugar().Warnf("accrual service returned empty body for order: %d", orderNumber)
+		return nil, fmt.Errorf("accrual response body is empty")
+	}
+
 	var accrualData models.AccrualResponse
 	if err := json.NewDecoder(resp.Body).Decode(&accrualData); err != nil {
 		logger.Log.Sugar().Errorf("Failed to decode accrual json data: %v", err)

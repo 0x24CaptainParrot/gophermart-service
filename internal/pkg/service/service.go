@@ -8,7 +8,7 @@ import (
 )
 
 type Order interface {
-	CreateOrder(ctx context.Context, order models.Order) error
+	CreateOrder(ctx context.Context, order models.Order) (*ResponseInfo, error)
 	ListOrders(ctx context.Context, userID int) ([]models.Order, error)
 	CheckOrderStatus(ctx context.Context, orderID int64, userID int) (string, error)
 }

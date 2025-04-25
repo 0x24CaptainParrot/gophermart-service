@@ -47,11 +47,11 @@ func LoggingReqResMiddleware(logger *zap.Logger) func(http.Handler) http.Handler
 			elapsed := time.Since(start)
 
 			logger.Info("HTTP Request was made",
-				zap.String("method:", r.Method),
-				zap.String("uri:", r.RequestURI),
-				zap.Int("status code:", trw.reqInfo.code),
-				zap.Int("size:", trw.reqInfo.size),
-				zap.Duration("elapsed:", elapsed))
+				zap.String("method", r.Method),
+				zap.String("uri", r.RequestURI),
+				zap.Int("status code", trw.reqInfo.code),
+				zap.Int("size", trw.reqInfo.size),
+				zap.Duration("elapsed", elapsed))
 		})
 	}
 }
