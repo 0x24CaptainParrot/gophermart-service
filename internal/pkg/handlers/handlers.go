@@ -80,10 +80,17 @@ func (h *Handler) UserOrdersHandler(w http.ResponseWriter, r *http.Request) {
 	orders, err := h.services.Order.ListOrders(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "user has no orders", http.StatusNoContent)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if len(orders) == 0 {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -190,6 +197,12 @@ func (h *Handler) DisplayUserWithdrawalsHandler(w http.ResponseWriter, r *http.R
 	userWithdrawals, err := h.services.Balance.DisplayWithdrawals(ctx, userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if len(userWithdrawals) == 0 {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 

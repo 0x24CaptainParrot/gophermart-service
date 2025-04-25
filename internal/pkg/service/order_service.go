@@ -169,7 +169,6 @@ func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber i
 
 	accrualData, err := s.getAccrual(ctx, orderNumber)
 	if err != nil {
-		logger.Log.Sugar().Errorf("failed to fetch data from accrual: Code: ")
 		return fmt.Errorf("failed to get data from accrual: %v", err)
 	}
 

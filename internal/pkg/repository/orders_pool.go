@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/0x24CaptainParrot/gophermart-service/internal/logger"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -60,7 +61,7 @@ func (r *WorkerPoolRepo) UpdateOrderAndBalance(ctx context.Context, order models
 	}
 
 	if tag.RowsAffected() == 0 {
-		return errors.New("no rows updated for order")
+		logger.Log.Sugar().Infof("No rows updated: maybe order %d already in correct state", order.Number)
 	}
 
 	return tx.Commit(ctx)
