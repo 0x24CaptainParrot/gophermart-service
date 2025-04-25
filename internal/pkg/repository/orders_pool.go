@@ -20,24 +20,21 @@ func NewWorkerPoolRepo(pool *pgxpool.Pool) *WorkerPoolRepo {
 }
 
 const (
-	updateOrderWithAccrual = `
-		WITH updated_order AS (
+	updateOrder = `
 			UPDATE orders 
 			SET status = $2,
 				accrual = $3,
 				updated_at = NOW() 
-			WHERE number = $1 
-			RETURNING user_id, accrual
-		),
-		insert_balance AS (
+			WHERE number = $1`
+
+	updateBalance = `
 			INSERT INTO balance (user_id, current, withdrawn) 
-			SELECT user_id, 0, 0 FROM updated_order 
-			ON CONFLICT (user_id) DO NOTHING
-		)
-		UPDATE balance 
-		SET current = current + updated_order.accrual 
-		FROM updated_order 
-		WHERE balance.user_id = updated_order.user_id;`
+			VALUES (
+					(SELECT user_id FROM orders WHERE number = $1), $2, 0
+			)
+			ON CONFLICT (user_id) DO UPDATE 
+			SET current = balance.current + EXCLUDED.current,
+				updated_at = NOW()`
 )
 
 func (r *WorkerPoolRepo) UpdateOrderAndBalance(ctx context.Context, order models.Order, accrual float64) error {
@@ -55,13 +52,19 @@ func (r *WorkerPoolRepo) UpdateOrderAndBalance(ctx context.Context, order models
 		return fmt.Errorf("order %d is already locked", order.Number)
 	}
 
-	tag, err := tx.Exec(ctx, updateOrderWithAccrual, order.Number, order.Status, accrual)
+	tag, err := tx.Exec(ctx, updateOrder, order.Number, order.Status, accrual)
 	if err != nil {
-		return fmt.Errorf("failed to update order and balance: %w", err)
+		return fmt.Errorf("failed to update order: %w", err)
 	}
 
 	if tag.RowsAffected() == 0 {
 		logger.Log.Sugar().Infof("No rows updated: maybe order %d already in correct state", order.Number)
+		return tx.Commit(ctx)
+	}
+
+	_, err = tx.Exec(ctx, updateBalance, order.Number, accrual)
+	if err != nil {
+		return fmt.Errorf("failed to update balance: %w", err)
 	}
 
 	return tx.Commit(ctx)
