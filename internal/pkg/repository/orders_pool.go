@@ -113,7 +113,7 @@ func (r *WorkerPoolRepo) LockAndGetOrderStatus(ctx context.Context, orderNumber 
 const insertMissingOrder = `
 				INSERT INTO orders (user_id, number, status) 
 				VALUES (0, $1, 'NEW') 
-				ON CONFLICT (number) DO NOTHUNG`
+				ON CONFLICT (number) DO NOTHING`
 
 func (r *WorkerPoolRepo) InsertMissingOrder(ctx context.Context, orderNumber int64) error {
 	_, err := r.pool.Exec(ctx, insertMissingOrder, orderNumber)
