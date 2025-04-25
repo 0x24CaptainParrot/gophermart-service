@@ -198,7 +198,6 @@ func (h *Handler) DisplayUserWithdrawalsHandler(w http.ResponseWriter, r *http.R
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-
 	if len(userWithdrawals) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
