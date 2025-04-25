@@ -34,6 +34,7 @@ type WorkerPoolRepository interface {
 	UpdateOrderAndBalance(ctx context.Context, order models.Order, accrual float64) error
 	GetPendingOrders(ctx context.Context, limit int) ([]models.Order, error)
 	LockAndGetOrderStatus(ctx context.Context, orderNumber int64) (string, error)
+	InsertMissingOrder(ctx context.Context, orderNumber int64) error
 }
 
 type Repository struct {

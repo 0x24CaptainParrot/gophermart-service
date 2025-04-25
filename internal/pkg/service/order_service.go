@@ -158,13 +158,13 @@ func (s *OrderProcessingService) processExistingOrders(ctx context.Context) {
 }
 
 func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber int64) error {
-	_, err := s.repo.LockAndGetOrderStatus(ctx, orderNumber)
+	status, err := s.repo.LockAndGetOrderStatus(ctx, orderNumber)
 	if err != nil {
 		if errors.Is(err, repository.ErrOrderNotFound) {
-			logger.Log.Sugar().Warnf("Order: %d not found", orderNumber)
-			return nil
+			status = "NEW"
+		} else {
+			return fmt.Errorf("failed to check order status: %w", err)
 		}
-		return fmt.Errorf("failed to check order status: %w", err)
 	}
 
 	accrualData, err := s.getAccrual(ctx, orderNumber)
@@ -177,9 +177,21 @@ func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber i
 		logger.Log.Sugar().Infof("Order with number: %d has 0 loyalty points", accrualData.Order)
 	}
 
+	if accrualData.Status == "INVALID" {
+		logger.Log.Sugar().Warnf("accrual service returned INVALID status for order: %d", orderNumber)
+		return nil
+	}
+
 	order := models.Order{
 		Number: orderNumber,
 		Status: accrualData.Status,
+	}
+
+	if status == "NEW" {
+		err := s.insertMissingOrder(ctx, orderNumber)
+		if err != nil {
+			return fmt.Errorf("failed to insert missing order: %w", err)
+		}
 	}
 
 	logger.Log.Sugar().Infof("updating with: number: %d, status: %s, accrual: %.2f", order.Number, accrualData.Status, accrualData.Accrual)
@@ -237,6 +249,10 @@ func (s *OrderProcessingService) getAccrual(ctx context.Context, orderNumber int
 
 	accrualData.StatusCode = resp.StatusCode
 	return &accrualData, nil
+}
+
+func (s *OrderProcessingService) insertMissingOrder(ctx context.Context, orderNumber int64) error {
+	return s.repo.InsertMissingOrder(ctx, orderNumber)
 }
 
 func (s *OrderProcessingService) EnqueueOrder(ctx context.Context, order models.Order) error {
