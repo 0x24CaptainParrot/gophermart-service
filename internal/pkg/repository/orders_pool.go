@@ -25,7 +25,7 @@ const (
 			SET status = $2,
 				accrual = $3,
 				updated_at = NOW() 
-			WHERE number = $1 
+			WHERE number = $1 AND status IN ('NEW', 'PROCESSING')
 			RETURNING user_id, accrual
 		),
 		insert_balance AS (

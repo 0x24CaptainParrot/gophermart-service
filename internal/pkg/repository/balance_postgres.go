@@ -55,7 +55,7 @@ func (bp *BalancePostgres) WithdrawLoyaltyPoints(ctx context.Context, userID int
 	}
 	defer tx.Rollback()
 
-	if _, err := bp.db.ExecContext(ctx, insertBalanceIfNotExists, userID); err != nil {
+	if _, err := tx.ExecContext(ctx, insertBalanceIfNotExists, userID); err != nil {
 		return fmt.Errorf("failed to insert balance row: %w", err)
 	}
 
