@@ -168,6 +168,7 @@ func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber i
 	}
 
 	if status == "PROCESSED" {
+		logger.Log.Sugar().Infof("order: %d already processed, skipping", orderNumber)
 		return nil
 	}
 
@@ -219,7 +220,7 @@ func (s *OrderProcessingService) getAccrual(ctx context.Context, orderNumber int
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent {
-		logger.Log.Sugar().Warnf("accrual service returned 204 No Content for order: %d", orderNumber)
+		logger.Log.Sugar().Infof("accrual service returned 204 No Content for order: %d", orderNumber)
 		return nil, fmt.Errorf("accrual service returned 204 No Content")
 	}
 
