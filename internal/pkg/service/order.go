@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
@@ -44,14 +46,27 @@ func (os *OrderService) CreateOrder(ctx context.Context, order models.Order) (*R
 			ErrMsg:         repository.ErrAlreadyExists,
 		}
 
-	default:
-		if err := os.repo.CreateOrder(ctx, order); err != nil {
+	case repository.StatusNotExists:
+		err := os.repo.CreateOrder(ctx, order)
+		if err != nil {
+			if errors.Is(err, repository.ErrAlreadyExists) {
+				return nil, &OrderServiceError{
+					RespStatusCode: http.StatusConflict,
+					ErrMsg:         repository.ErrAlreadyExists,
+				}
+			}
 			return nil, &OrderServiceError{
 				RespStatusCode: http.StatusInternalServerError,
 				ErrMsg:         err,
 			}
 		}
 		return &ResponseInfo{RespStatusCode: http.StatusAccepted}, nil
+
+	default:
+		return nil, &OrderServiceError{
+			RespStatusCode: http.StatusInternalServerError,
+			ErrMsg:         fmt.Errorf("unexpected order status: %s", status),
+		}
 	}
 }
 

@@ -49,20 +49,16 @@ func (h *Handler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 	respInfo, err := h.services.Order.CreateOrder(ctx, order)
 	if err != nil {
-		svcErr, ok := err.(*service.OrderServiceError)
-		if !ok {
-			http.Error(w, "failed to return the server response", http.StatusInternalServerError)
+		var svcErr *service.OrderServiceError
+		if errors.As(err, &svcErr) {
+			http.Error(w, svcErr.Error(), svcErr.RespStatusCode)
 			return
 		}
-		if svcErr.RespStatusCode == http.StatusConflict {
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		}
-		http.Error(w, svcErr.Error(), svcErr.RespStatusCode)
+		http.Error(w, "failed to return the server response", http.StatusInternalServerError)
 		return
 	}
 
-	if respInfo.RespStatusCode != http.StatusOK {
+	if respInfo.RespStatusCode == http.StatusAccepted {
 		if err := h.services.OrderProcessing.EnqueueOrder(r.Context(), order); err != nil {
 			logger.Log.Sugar().Errorf("failed to enqueue order %d, err: %v", order.Number, err)
 			http.Error(w, "failed to enqueue order", http.StatusInternalServerError)
@@ -160,7 +156,7 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if respInfo.RespStatusCode != http.StatusOK {
+	if respInfo.RespStatusCode == http.StatusAccepted {
 		if err := h.services.OrderProcessing.EnqueueOrder(r.Context(), order); err != nil {
 			logger.Log.Sugar().Errorf("failed to enqueue order %d, err: %v", order.Number, err)
 			http.Error(w, "failed to enqueue order", http.StatusInternalServerError)
@@ -198,11 +194,6 @@ func (h *Handler) DisplayUserWithdrawalsHandler(w http.ResponseWriter, r *http.R
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if len(userWithdrawals) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(userWithdrawals)
 }

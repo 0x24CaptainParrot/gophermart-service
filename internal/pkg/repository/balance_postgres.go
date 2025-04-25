@@ -35,8 +35,11 @@ func (bp *BalancePostgres) DisplayUserBalance(ctx context.Context, userID int) (
 	var balance models.Balance
 	row := bp.db.QueryRowContext(ctx, getUserBalance, userID)
 	err := row.Scan(&balance.Current, &balance.Withdrawn)
+	if err != nil {
+		return models.Balance{}, fmt.Errorf("failed to get user balance: %w", err)
+	}
 
-	return balance, err
+	return balance, nil
 }
 
 const insertWithdrawal = `INSERT INTO withdrawals (user_id, order_id, sum) VALUES ($1, $2, $3)`
