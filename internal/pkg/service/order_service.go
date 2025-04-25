@@ -158,18 +158,13 @@ func (s *OrderProcessingService) processExistingOrders(ctx context.Context) {
 }
 
 func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber int64) error {
-	status, err := s.repo.LockAndGetOrderStatus(ctx, orderNumber)
+	_, err := s.repo.LockAndGetOrderStatus(ctx, orderNumber)
 	if err != nil {
 		if errors.Is(err, repository.ErrOrderNotFound) {
 			logger.Log.Sugar().Warnf("Order: %d not found", orderNumber)
 			return nil
 		}
 		return fmt.Errorf("failed to check order status: %w", err)
-	}
-
-	if status == "PROCESSED" {
-		logger.Log.Sugar().Infof("order: %d already processed, skipping", orderNumber)
-		return nil
 	}
 
 	accrualData, err := s.getAccrual(ctx, orderNumber)
