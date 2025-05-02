@@ -7,18 +7,18 @@ import (
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
 )
 
-type Authorization interface {
+type AuthorizationRepository interface {
 	CreateUser(ctx context.Context, user models.User) (int, error)
 	GetUser(ctx context.Context, login, password string) (models.User, error)
 }
 
-type Order interface {
+type OrderRepository interface {
 	CreateOrder(ctx context.Context, order models.Order) error
 	ListOrders(ctx context.Context, userID int) ([]models.Order, error)
 	CheckOrderStatus(ctx context.Context, orderID int64, userID int) (string, error)
 }
 
-type Balance interface {
+type BalanceRepository interface {
 	DisplayUserBalance(ctx context.Context, userID int) (models.Balance, error)
 	WithdrawLoyaltyPoints(ctx context.Context, userID int, withdraw models.WithdrawRequest) error
 	DisplayWithdrawals(ctx context.Context, userID int) ([]models.Withdrawal, error)
@@ -38,9 +38,9 @@ type WorkerPoolRepository interface {
 }
 
 type Repository struct {
-	Authorization Authorization
-	Order         Order
-	Balance       Balance
+	Authorization AuthorizationRepository
+	Order         OrderRepository
+	Balance       BalanceRepository
 	WPRepository  WorkerPoolRepository
 }
 

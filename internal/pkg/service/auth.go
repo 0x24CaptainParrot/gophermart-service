@@ -11,6 +11,12 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
+type Authorization interface {
+	CreateUser(ctx context.Context, user models.User) (int, error)
+	GenerateToken(ctx context.Context, login, password string) (string, error)
+	ParseToken(ctx context.Context, tokenGot string) (int, error)
+}
+
 const (
 	TokenExp  = time.Hour * 6
 	SecretKey = "somesigningkey"
@@ -30,10 +36,10 @@ type tokenClaims struct {
 }
 
 type AuthService struct {
-	repo repository.Authorization
+	repo repository.AuthorizationRepository
 }
 
-func NewAuthService(repo repository.Authorization) *AuthService {
+func NewAuthService(repo repository.AuthorizationRepository) *AuthService {
 	return &AuthService{repo: repo}
 }
 

@@ -10,8 +10,14 @@ import (
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/repository"
 )
 
+type Order interface {
+	CreateOrder(ctx context.Context, order models.Order) (*ResponseInfo, error)
+	ListOrders(ctx context.Context, userID int) ([]models.Order, error)
+	CheckOrderStatus(ctx context.Context, orderID int64, userID int) (string, error)
+}
+
 type OrderService struct {
-	repo repository.Order
+	repo repository.OrderRepository
 }
 
 type OrderServiceError struct {
@@ -27,7 +33,7 @@ type ResponseInfo struct {
 	RespStatusCode int
 }
 
-func NewOrderService(repo repository.Order) *OrderService {
+func NewOrderService(repo repository.OrderRepository) *OrderService {
 	return &OrderService{repo: repo}
 }
 

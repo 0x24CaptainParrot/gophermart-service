@@ -54,7 +54,12 @@ func main() {
 	orderProcessing.StartProcessing(context.Background(), 1)
 
 	repos := repository.NewRepository(db)
-	services := service.NewService(repos.Authorization, repos.Order, repos.Balance, orderProcessing)
+	services := service.NewService(service.Dependencies{
+		Authorization:   service.NewAuthService(repos.Authorization),
+		Order:           service.NewOrderService(repos.Order),
+		Balance:         service.NewBalanceService(repos.Balance),
+		OrderProcessing: orderProcessing,
+	})
 	handler := handlers.NewHandler(cfg, services)
 	srv := &handlers.Server{}
 

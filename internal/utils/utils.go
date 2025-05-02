@@ -24,35 +24,6 @@ func GetMigrationsPath() string {
 	return filepath.Join(rootPath, "internal", "pkg", "repository", "schema")
 }
 
-func IsValidOrderNumberLuhn(orderNumber int64) bool {
-	s := strconv.FormatInt(orderNumber, 10)
-
-	if len(s) < 5 {
-		return false
-	}
-
-	sum := 0
-	alternate := len(s)%2 == 0
-
-	for i, c := range s {
-		digit, err := strconv.Atoi(string(c))
-		if err != nil {
-			return false
-		}
-
-		if (i%2 == 0) == alternate {
-			digit *= 2
-			if digit > 9 {
-				digit = digit%10 + digit/10
-			}
-		}
-		sum += digit
-		alternate = !alternate
-	}
-
-	return sum%10 == 0
-}
-
 func IsValidOrderNum(num int64) bool {
 	s := strconv.FormatInt(num, 10)
 	sum := 0

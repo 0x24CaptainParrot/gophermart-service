@@ -15,6 +15,10 @@ type Order struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+func (o Order) IsEmpty() bool {
+	return o.Number == 0 && o.Status == "" && o.Accrual == 0
+}
+
 func (o Order) MarshalJSON() ([]byte, error) {
 	type OrderAlias Order
 

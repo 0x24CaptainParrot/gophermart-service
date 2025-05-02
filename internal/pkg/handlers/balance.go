@@ -1,12 +1,9 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"strconv"
 
 	"github.com/0x24CaptainParrot/gophermart-service/internal/logger"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
@@ -15,91 +12,21 @@ import (
 	"github.com/0x24CaptainParrot/gophermart-service/internal/utils"
 )
 
-func (h *Handler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserID(r)
-	if !ok {
-		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
-		return
-	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "failed to read body request", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
-
-	num, err := strconv.ParseInt(string(body), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid order number", http.StatusBadRequest)
-		return
-	}
-
-	if !utils.IsValidOrderNum(num) {
-		http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
-		return
-	}
-
-	order := models.Order{
-		UserID: userID,
-		Number: num,
-		Status: "NEW",
-	}
-
-	ctx := r.Context()
-	respInfo, err := h.services.Order.CreateOrder(ctx, order)
-	if err != nil {
-		var svcErr *service.OrderServiceError
-		if errors.As(err, &svcErr) {
-			http.Error(w, svcErr.Error(), svcErr.RespStatusCode)
-			return
-		}
-		http.Error(w, "failed to return the server response", http.StatusInternalServerError)
-		return
-	}
-
-	if respInfo.RespStatusCode == http.StatusAccepted {
-		if err := h.services.OrderProcessing.EnqueueOrder(r.Context(), order); err != nil {
-			logger.Log.Sugar().Errorf("failed to enqueue order %d, err: %v", order.Number, err)
-			http.Error(w, "failed to enqueue order", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	w.WriteHeader(respInfo.RespStatusCode)
+type BalanceHandler struct {
+	OrderService           service.Order
+	BalanceService         service.Balance
+	OrderProcessingService service.OrderProcessing
 }
 
-func (h *Handler) UserOrdersHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserID(r)
-	if !ok {
-		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
-		return
+func NewBalanceHandler(order service.Order, balance service.Balance, processOrders service.OrderProcessing) *BalanceHandler {
+	return &BalanceHandler{
+		OrderService:           order,
+		BalanceService:         balance,
+		OrderProcessingService: processOrders,
 	}
-
-	ctx := r.Context()
-	orders, err := h.services.Order.ListOrders(ctx, userID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if len(orders) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(orders)
 }
 
-func (h *Handler) UserBalanceHandler(w http.ResponseWriter, r *http.Request) {
+func (h *BalanceHandler) UserBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := GetUserID(r)
 	if !ok {
 		http.Error(w, "user is is missing in context", http.StatusUnauthorized)
@@ -107,7 +34,7 @@ func (h *Handler) UserBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	balance, err := h.services.Balance.DisplayUserBalance(ctx, userID)
+	balance, err := h.BalanceService.DisplayUserBalance(ctx, userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -118,7 +45,7 @@ func (h *Handler) UserBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(balance)
 }
 
-func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Request) {
+func (h *BalanceHandler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := GetUserID(r)
 	if !ok {
 		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
@@ -147,7 +74,7 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 		Status: "NEW",
 	}
 
-	respInfo, err := h.services.Order.CreateOrder(r.Context(), order)
+	respInfo, err := h.OrderService.CreateOrder(r.Context(), order)
 	if err != nil {
 		svcErr, ok := err.(*service.OrderServiceError)
 		if !ok {
@@ -164,7 +91,7 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	if respInfo.RespStatusCode == http.StatusAccepted {
-		if err := h.services.OrderProcessing.EnqueueOrder(r.Context(), order); err != nil {
+		if err := h.OrderProcessingService.EnqueueOrder(r.Context(), order); err != nil {
 			logger.Log.Sugar().Errorf("failed to enqueue order %d, err: %v", order.Number, err)
 			http.Error(w, "failed to enqueue order", http.StatusInternalServerError)
 			return
@@ -172,7 +99,7 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	ctx := r.Context()
-	if err := h.services.Balance.WithdrawLoyaltyPoints(ctx, userID, withdrawInfo); err != nil {
+	if err := h.BalanceService.WithdrawLoyaltyPoints(ctx, userID, withdrawInfo); err != nil {
 		if errors.Is(err, repository.ErrInsufficientBalance) {
 			http.Error(w, err.Error(), http.StatusPaymentRequired)
 			logger.Log.Sugar().Errorf("Withdraw failed: %v", err)
@@ -186,7 +113,7 @@ func (h *Handler) WithdrawLoyaltyPointsHandler(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *Handler) DisplayUserWithdrawalsHandler(w http.ResponseWriter, r *http.Request) {
+func (h *BalanceHandler) DisplayUserWithdrawalsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := GetUserID(r)
 	if !ok {
 		http.Error(w, "user id is missing in context", http.StatusUnauthorized)
@@ -194,7 +121,7 @@ func (h *Handler) DisplayUserWithdrawalsHandler(w http.ResponseWriter, r *http.R
 	}
 
 	ctx := r.Context()
-	userWithdrawals, err := h.services.Balance.DisplayWithdrawals(ctx, userID)
+	userWithdrawals, err := h.BalanceService.DisplayWithdrawals(ctx, userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

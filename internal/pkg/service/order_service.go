@@ -18,16 +18,24 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type OrderProcessing interface {
+	StartProcessing(ctx context.Context, workers int)
+	EnqueueOrder(ctx context.Context, order models.Order) error
+	StopProcessing()
+}
+
 type OrderProcessingService struct {
-	repo        repository.WorkerPoolRepository
-	accrualAddr string
-	pool        *pgxpool.Pool
-	channel     string
-	workers     int
-	cancel      context.CancelFunc
-	client      *http.Client
-	ordersQueue chan int64
-	orderLocks  *sync.Map
+	repo         repository.WorkerPoolRepository
+	accrualAddr  string
+	pool         *pgxpool.Pool
+	channel      string
+	workers      int
+	cancel       context.CancelFunc
+	client       *http.Client
+	ordersQueue  chan int64
+	updatesQueue chan models.Order
+	workersWg    sync.WaitGroup
+	orderLocks   *sync.Map
 }
 
 func NewOrderProcessingService(pool *pgxpool.Pool, accrualAddr string, channel string) (*OrderProcessingService, error) {
@@ -41,13 +49,15 @@ func NewOrderProcessingService(pool *pgxpool.Pool, accrualAddr string, channel s
 	}
 
 	return &OrderProcessingService{
-		repo:        repository.NewWorkerPoolRepo(pool),
-		accrualAddr: accrualAddr,
-		pool:        pool,
-		channel:     channel,
-		client:      client,
-		ordersQueue: make(chan int64, 1000),
-		orderLocks:  &sync.Map{},
+		repo:         repository.NewWorkerPoolRepo(pool),
+		accrualAddr:  accrualAddr,
+		pool:         pool,
+		channel:      channel,
+		client:       client,
+		ordersQueue:  make(chan int64, 1000),
+		updatesQueue: make(chan models.Order, 1000),
+		workersWg:    sync.WaitGroup{},
+		orderLocks:   &sync.Map{},
 	}, nil
 }
 
@@ -58,8 +68,12 @@ func (s *OrderProcessingService) StartProcessing(ctx context.Context, workers in
 	go s.notificationListener(ctx)
 
 	for i := 0; i < workers; i++ {
+		s.workersWg.Add(1)
 		go s.worker(ctx, i)
 	}
+
+	s.workersWg.Add(1)
+	go s.updateWorker(ctx)
 
 	go s.processExistingOrders(ctx)
 }
@@ -108,6 +122,8 @@ func (s *OrderProcessingService) notificationListener(ctx context.Context) {
 }
 
 func (s *OrderProcessingService) worker(ctx context.Context, workerID int) {
+	defer s.workersWg.Done()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -120,12 +136,53 @@ func (s *OrderProcessingService) worker(ctx context.Context, workerID int) {
 			go func(order int64) {
 				defer s.orderLocks.Delete(order)
 
-				if err := s.processOrder(ctx, order); err != nil {
+				orderForUpdate, err := s.processOrder(ctx, order)
+				if err != nil {
 					logger.Log.Sugar().Errorf("Worker %d failed to process order %d: %v", workerID, orderNumber, err)
 					return
 				}
+				if orderForUpdate.IsEmpty() {
+					logger.Log.Sugar().Infof("Worker %d: skipping empty order for %d", workerID, orderNumber)
+					return
+				}
+
+				s.updatesQueue <- orderForUpdate
 				logger.Log.Sugar().Infof("Worker %d successfully processed order: %d", workerID, orderNumber)
 			}(orderNumber)
+		}
+	}
+}
+
+func (s *OrderProcessingService) updateWorker(ctx context.Context) {
+	defer s.workersWg.Done()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case order := <-s.updatesQueue:
+			logger.Log.Sugar().Infof("updating with: number: %d, status: %s, accrual: %.2f", order.Number, order.Status, order.Accrual)
+
+			var lastErr error
+			for i := 0; i < 3; i++ {
+				err := s.repo.UpdateOrderAndBalance(ctx, order, order.Accrual)
+				if err == nil {
+					logger.Log.Sugar().Infof("Order with number %d was updated successfully", order.Number)
+					break
+				}
+				var pgError *pgconn.PgError
+				if errors.As(err, &pgError) && pgerrcode.IsTransactionRollback(pgError.Code) {
+					lastErr = err
+					time.Sleep(time.Duration(i+1) * 100 * time.Millisecond)
+					continue
+				}
+				lastErr = err
+				break
+			}
+
+			if lastErr != nil {
+				logger.Log.Sugar().Errorf("failed to update order with number: %d. error: %v", order.Number, lastErr)
+			}
 		}
 	}
 }
@@ -157,19 +214,19 @@ func (s *OrderProcessingService) processExistingOrders(ctx context.Context) {
 	}
 }
 
-func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber int64) error {
+func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber int64) (models.Order, error) {
 	status, err := s.repo.LockAndGetOrderStatus(ctx, orderNumber)
 	if err != nil {
 		if errors.Is(err, repository.ErrOrderNotFound) {
 			status = "NEW"
 		} else {
-			return fmt.Errorf("failed to check order status: %w", err)
+			return models.Order{}, fmt.Errorf("failed to check order status: %w", err)
 		}
 	}
 
 	accrualData, err := s.getAccrual(ctx, orderNumber)
 	if err != nil {
-		return fmt.Errorf("failed to get data from accrual: %v", err)
+		return models.Order{}, fmt.Errorf("failed to get data from accrual: %v", err)
 	}
 
 	if accrualData.Accrual == 0 {
@@ -178,39 +235,23 @@ func (s *OrderProcessingService) processOrder(ctx context.Context, orderNumber i
 
 	if accrualData.Status == "INVALID" {
 		logger.Log.Sugar().Warnf("accrual service returned INVALID status for order: %d", orderNumber)
-		return nil
+		return models.Order{}, nil
 	}
 
 	order := models.Order{
-		Number: orderNumber,
-		Status: accrualData.Status,
+		Number:  orderNumber,
+		Status:  accrualData.Status,
+		Accrual: accrualData.Accrual,
 	}
 
 	if status == "NEW" {
 		err := s.insertMissingOrder(ctx, orderNumber)
 		if err != nil {
-			return fmt.Errorf("failed to insert missing order: %w", err)
+			return models.Order{}, fmt.Errorf("failed to insert missing order: %w", err)
 		}
 	}
 
-	logger.Log.Sugar().Infof("updating with: number: %d, status: %s, accrual: %.2f", order.Number, accrualData.Status, accrualData.Accrual)
-
-	var lastErr error
-	for i := 0; i < 3; i++ {
-		if err := s.repo.UpdateOrderAndBalance(ctx, order, accrualData.Accrual); err != nil {
-			var pgError *pgconn.PgError
-			if errors.As(err, &pgError) && pgerrcode.IsTransactionRollback(pgError.Code) {
-				lastErr = err
-				time.Sleep(time.Duration(i) * 100 * time.Millisecond)
-				continue
-			}
-
-			logger.Log.Sugar().Errorf("failed to update order with number: %d. error: %v", order.Number, err)
-			return fmt.Errorf("failed to update order: %w", err)
-		}
-		return nil
-	}
-	return lastErr
+	return order, nil
 }
 
 func (s *OrderProcessingService) getAccrual(ctx context.Context, orderNumber int64) (*models.AccrualResponse, error) {
@@ -263,4 +304,6 @@ func (s *OrderProcessingService) StopProcessing() {
 	if s.cancel != nil {
 		s.cancel()
 	}
+
+	s.workersWg.Wait()
 }

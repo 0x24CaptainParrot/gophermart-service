@@ -8,10 +8,19 @@ import (
 
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/repository"
+	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/service"
 )
 
+type AuthHandler struct {
+	AuthService service.Authorization
+}
+
+func NewAuthHandler(auth service.Authorization) *AuthHandler {
+	return &AuthHandler{AuthService: auth}
+}
+
 // sign up
-func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -19,7 +28,7 @@ func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	id, err := h.services.Authorization.CreateUser(ctx, user)
+	id, err := h.AuthService.CreateUser(ctx, user)
 	if err != nil {
 		if errors.Is(err, repository.ErrUserExists) {
 			http.Error(w, "user with the given login already exists", http.StatusConflict)
@@ -29,7 +38,7 @@ func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.services.Authorization.GenerateToken(ctx, user.Login, user.Password)
+	token, err := h.AuthService.GenerateToken(ctx, user.Login, user.Password)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "failed to generate token", http.StatusInternalServerError)
@@ -49,7 +58,7 @@ func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // sign in
-func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -57,7 +66,7 @@ func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	token, err := h.services.Authorization.GenerateToken(ctx, user.Login, user.Password)
+	token, err := h.AuthService.GenerateToken(ctx, user.Login, user.Password)
 	if err != nil {
 		http.Error(w, "invalid login/password", http.StatusUnauthorized)
 		return

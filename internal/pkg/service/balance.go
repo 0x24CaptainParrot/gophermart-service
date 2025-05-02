@@ -7,11 +7,17 @@ import (
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/repository"
 )
 
-type BalanceService struct {
-	repo repository.Balance
+type Balance interface {
+	DisplayUserBalance(ctx context.Context, userID int) (models.Balance, error)
+	WithdrawLoyaltyPoints(ctx context.Context, userID int, withdraw models.WithdrawRequest) error
+	DisplayWithdrawals(ctx context.Context, userID int) ([]models.Withdrawal, error)
 }
 
-func NewBalanceService(repo repository.Balance) *BalanceService {
+type BalanceService struct {
+	repo repository.BalanceRepository
+}
+
+func NewBalanceService(repo repository.BalanceRepository) *BalanceService {
 	return &BalanceService{repo: repo}
 }
 
