@@ -9,6 +9,7 @@ import (
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/repository"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/service"
+	"github.com/go-chi/chi"
 )
 
 type AuthHandler struct {
@@ -17,6 +18,13 @@ type AuthHandler struct {
 
 func NewAuthHandler(auth service.Authorization) *AuthHandler {
 	return &AuthHandler{AuthService: auth}
+}
+
+func (h *AuthHandler) AuthRoutes() chi.Router {
+	r := chi.NewRouter()
+	r.Post("/register", h.RegisterUserHandler)
+	r.Post("/login", h.LoginHandler)
+	return r
 }
 
 // sign up

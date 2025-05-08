@@ -9,18 +9,22 @@ import (
 )
 
 type Handler struct {
-	Auth     *AuthHandler
-	Orders   *OrderHandler
-	Balance  *BalanceHandler
-	services *service.Service
-	cfg      *config.Config
+	AuthHandler    *AuthHandler
+	OrdersHandler  *OrderHandler
+	BalanceHandler *BalanceHandler
+	services       *service.Service
+	cfg            *config.Config
 }
 
 func NewHandler(config *config.Config, service *service.Service) *Handler {
 	return &Handler{
-		Auth:     NewAuthHandler(service.Authorization),
-		Orders:   NewOrderHandler(service.Order, service.OrderProcessing),
-		Balance:  NewBalanceHandler(service.Order, service.Balance, service.OrderProcessing),
+		AuthHandler:   NewAuthHandler(service.Authorization),
+		OrdersHandler: NewOrderHandler(service.Order, service.OrderProcessing),
+		BalanceHandler: NewBalanceHandler(
+			WithOrderService(service.Order),
+			WithBalanceService(service.Balance),
+			WithOrderProcessingService(service.OrderProcessing),
+		),
 		services: service,
 		cfg:      config,
 	}
@@ -31,22 +35,21 @@ func (h *Handler) InitAPIRoutes() *chi.Mux {
 	r.Use(logger.LoggingReqResMiddleware(logger.Log))
 	r.Use(middleware.CompressGzipMiddleware())
 
-	r.Route("/api", func(r chi.Router) {
-		r.Route("/user", func(r chi.Router) {
-			r.Post("/register", h.Auth.RegisterUserHandler)
-			r.Post("/login", h.Auth.LoginHandler)
+	r.Mount("/api/user", h.userRouter())
 
-			r.Group(func(r chi.Router) {
-				r.Use(AuthenticateMiddleware(h.services.Authorization))
-				r.Post("/orders", h.Orders.ProcessUserOrderHandler)
-				r.Get("/orders", h.Orders.UserOrdersHandler)
-				r.Route("/balance", func(r chi.Router) {
-					r.Get("/", h.Balance.UserBalanceHandler)
-					r.Post("/withdraw", h.Balance.WithdrawLoyaltyPointsHandler)
-				})
-				r.Get("/withdrawals", h.Balance.DisplayUserWithdrawalsHandler)
-			})
-		})
+	return r
+}
+
+func (h *Handler) userRouter() chi.Router {
+	r := chi.NewRouter()
+	r.Mount("/", h.AuthHandler.AuthRoutes())
+
+	r.Group(func(r chi.Router) {
+		r.Use(AuthenticateMiddleware(h.services.Authorization))
+
+		r.Mount("/orders", h.OrdersHandler.OrderRoutes())
+		r.Mount("/balance", h.BalanceHandler.BalanceRoutes())
+		r.Mount("/withdrawals", h.BalanceHandler.WithdrawalsRoutes())
 	})
 
 	return r

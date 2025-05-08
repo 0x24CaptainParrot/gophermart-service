@@ -12,6 +12,7 @@ import (
 	"github.com/0x24CaptainParrot/gophermart-service/internal/models"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/service"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/utils"
+	"github.com/go-chi/chi"
 )
 
 type OrderHandler struct {
@@ -24,6 +25,13 @@ func NewOrderHandler(order service.Order, processOrders service.OrderProcessing)
 		OrderService:           order,
 		OrderProcessingService: processOrders,
 	}
+}
+
+func (h *OrderHandler) OrderRoutes() chi.Router {
+	r := chi.NewRouter()
+	r.Post("/", h.ProcessUserOrderHandler)
+	r.Get("/", h.UserOrdersHandler)
+	return r
 }
 
 func (h *OrderHandler) ProcessUserOrderHandler(w http.ResponseWriter, r *http.Request) {

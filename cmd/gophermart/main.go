@@ -37,7 +37,7 @@ func main() {
 	if err != nil {
 		logger.Log.Sugar().Errorf("failed to init config for worker pool: %v", err)
 	}
-	workerPoolConfig.MaxConns = 12
+	workerPoolConfig.MaxConns = int32(cfg.WorkerPoolConns)
 
 	workerPool, err := pgxpool.NewWithConfig(context.Background(), workerPoolConfig)
 	if err != nil {
@@ -51,7 +51,7 @@ func main() {
 	}
 	defer orderProcessing.StopProcessing()
 
-	orderProcessing.StartProcessing(context.Background(), 1)
+	orderProcessing.StartProcessing(context.Background(), cfg.Workers)
 
 	repos := repository.NewRepository(db)
 	services := service.NewService(service.Dependencies{

@@ -10,6 +10,7 @@ import (
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/repository"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/pkg/service"
 	"github.com/0x24CaptainParrot/gophermart-service/internal/utils"
+	"github.com/go-chi/chi"
 )
 
 type BalanceHandler struct {
@@ -18,12 +19,45 @@ type BalanceHandler struct {
 	OrderProcessingService service.OrderProcessing
 }
 
-func NewBalanceHandler(order service.Order, balance service.Balance, processOrders service.OrderProcessing) *BalanceHandler {
-	return &BalanceHandler{
-		OrderService:           order,
-		BalanceService:         balance,
-		OrderProcessingService: processOrders,
+type BalanceHandlerOption func(*BalanceHandler)
+
+func WithOrderService(s service.Order) BalanceHandlerOption {
+	return func(h *BalanceHandler) {
+		h.OrderService = s
 	}
+}
+
+func WithBalanceService(s service.Balance) BalanceHandlerOption {
+	return func(h *BalanceHandler) {
+		h.BalanceService = s
+	}
+}
+
+func WithOrderProcessingService(s service.OrderProcessing) BalanceHandlerOption {
+	return func(h *BalanceHandler) {
+		h.OrderProcessingService = s
+	}
+}
+
+func NewBalanceHandler(opts ...BalanceHandlerOption) *BalanceHandler {
+	h := &BalanceHandler{}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
+}
+
+func (h *BalanceHandler) BalanceRoutes() chi.Router {
+	r := chi.NewRouter()
+	r.Get("/", h.UserBalanceHandler)
+	r.Post("/withdraw", h.WithdrawLoyaltyPointsHandler)
+	return r
+}
+
+func (h *BalanceHandler) WithdrawalsRoutes() chi.Router {
+	r := chi.NewRouter()
+	r.Get("/", h.DisplayUserWithdrawalsHandler)
+	return r
 }
 
 func (h *BalanceHandler) UserBalanceHandler(w http.ResponseWriter, r *http.Request) {
